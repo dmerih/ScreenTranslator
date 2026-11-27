@@ -391,10 +391,22 @@ class ScreenCaptureService : Service() {
             setTextColor(Color.BLACK)
             gravity = Gravity.CENTER
             setPadding(6, 4, 6, 4)
+            setBackgroundColor(Color.TRANSPARENT)
+            minHeight = box.height().coerceAtLeast(36)
+        }
+
+        val container = android.widget.FrameLayout(this).apply {
             setBackgroundColor(Color.WHITE)
             background.alpha = 255
             alpha = 1.0f
-            minHeight = box.height().coerceAtLeast(36)
+
+            addView(
+                textView,
+                android.widget.FrameLayout.LayoutParams(
+                    android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                    android.widget.FrameLayout.LayoutParams.WRAP_CONTENT
+                )
+            )
         }
 
         val params = WindowManager.LayoutParams(
@@ -412,8 +424,8 @@ class ScreenCaptureService : Service() {
         }
 
         try {
-            windowManager?.addView(textView, params)
-            translationViews.add(textView)
+            windowManager?.addView(container, params)
+            translationViews.add(container)
         } catch (e: Exception) {
             showMessage("번역문 표시 실패: ${e.message}")
         }
