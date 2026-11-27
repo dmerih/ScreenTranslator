@@ -368,13 +368,22 @@ class ScreenCaptureService : Service() {
         translatedText: String
     ) {
         val screenWidth = resources.displayMetrics.widthPixels
-        val screenHeight = resources.displayMetrics.heightPixels
+
+        val statusBarId = resources.getIdentifier(
+            "status_bar_height", "dimen", "android"
+        )
+        val statusBarHeight = if (statusBarId > 0) {
+            resources.getDimensionPixelSize(statusBarId)
+        } else {
+            0
+        }
 
         val left = box.left.coerceIn(0, screenWidth - 1)
-        val top = box.top.coerceIn(0, screenHeight - 1)
-        val overlayWidth = box.width().coerceAtLeast(120)
+        val top = (box.top - statusBarHeight).coerceAtLeast(0)
+
+        val overlayWidth = box.width()
+            .coerceAtLeast(120)
             .coerceAtMost(screenWidth - left)
-        val overlayHeight = box.height().coerceAtLeast(36)
 
         val textView = TextView(this).apply {
             text = translatedText
@@ -385,11 +394,12 @@ class ScreenCaptureService : Service() {
             setBackgroundColor(Color.WHITE)
             background.alpha = 255
             alpha = 1.0f
+            minHeight = box.height().coerceAtLeast(36)
         }
 
         val params = WindowManager.LayoutParams(
             overlayWidth,
-            overlayHeight,
+            WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
