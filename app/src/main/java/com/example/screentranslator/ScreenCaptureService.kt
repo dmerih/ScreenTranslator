@@ -150,7 +150,7 @@ class ScreenCaptureService : Service() {
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-            PixelFormat.TRANSLUCENT
+            PixelFormat.OPAQUE
         ).apply {
             gravity = Gravity.RIGHT or Gravity.CENTER_VERTICAL
             x = 20
@@ -378,6 +378,7 @@ class ScreenCaptureService : Service() {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(6, 4, 6, 4)
             setBackgroundColor(Color.WHITE)
+            alpha = 1.0f
         }
 
         val params = WindowManager.LayoutParams(
@@ -386,11 +387,12 @@ class ScreenCaptureService : Service() {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
-            PixelFormat.TRANSLUCENT
+            PixelFormat.OPAQUE
         ).apply {
             gravity = Gravity.TOP or Gravity.LEFT
+            alpha = 1.0f
             x = box.left
-            y = (box.top - 60).coerceAtLeast(0)
+            y = box.top
         }
 
         try {
