@@ -4,8 +4,10 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.media.projection.MediaProjectionManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.graphics.Color
 import android.view.Gravity
 import android.widget.Button
@@ -19,6 +21,7 @@ class MainActivity : Activity() {
 
     companion object {
         private const val REQUEST_CAPTURE = 1001
+        private const val REQUEST_OVERLAY = 1002
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -52,11 +55,7 @@ class MainActivity : Activity() {
         val startButton = Button(this).apply {
             text = "번역 시작"
             setOnClickListener {
-                statusText.text = "화면 캡처 권한을 요청합니다."
-                startActivityForResult(
-                    projectionManager.createScreenCaptureIntent(),
-                    REQUEST_CAPTURE
-                )
+                checkOverlayPermission()
             }
         }
 
@@ -66,7 +65,7 @@ class MainActivity : Activity() {
                 stopService(
                     Intent(this@MainActivity, ScreenCaptureService::class.java)
                 )
-                statusText.text = "화면 캡처 중지"
+                statusText.text = "번역 중지"
             }
         }
 
@@ -78,6 +77,27 @@ class MainActivity : Activity() {
         setContentView(layout)
     }
 
+    private fun checkOverlayPermission() {
+        if (!Settings.canDrawOverlays(this)) {
+            val intent = Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:$packageName")
+            )
+            startActivityForResult(intent, REQUEST_OVERLAY)
+        } else {
+            requestCapture()
+        }
+    }
+
+    private fun requestCapture() {
+        statusText.text = "화면 캡처 권한을 요청합니다."
+
+        startActivityForResult(
+            projectionManager.createScreenCaptureIntent(),
+            REQUEST_CAPTURE
+        )
+    }
+
     @Deprecated("Deprecated in Android API")
     override fun onActivityResult(
         requestCode: Int,
@@ -85,6 +105,14 @@ class MainActivity : Activity() {
         data: Intent?
     ) {
         super.onActivityResult(requestCode, resultCode, data)
+
+        if (requestCode == REQUEST_OVERLAY) {
+            if (Settings.canDrawOverlays(this)) {
+                requestCapture()
+            } else {
+                statusText.text = "화면 위 표시 권한이 필요합니다."
+            }
+        }
 
         if (requestCode == REQUEST_CAPTURE) {
             if (resultCode == Activity.RESULT_OK && data != null) {
@@ -103,8 +131,7 @@ class MainActivity : Activity() {
                     startService(serviceIntent)
                 }
 
-                statusText.text = "화면 캡처 실행 중"
-
+                statusText.text = "번역 서비스 실행 중"
             } else {
                 statusText.text = "화면 캡처 권한이 거부되었습니다."
             }

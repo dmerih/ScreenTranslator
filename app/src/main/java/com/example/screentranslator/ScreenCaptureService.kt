@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.graphics.Color
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
@@ -14,16 +15,24 @@ import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.IBinder
-import android.util.DisplayMetrics
+import android.view.Gravity
 import android.view.WindowManager
+import android.widget.Button
+import android.widget.Toast
 
 class ScreenCaptureService : Service() {
 
     private var mediaProjection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var imageReader: ImageReader? = null
+    private var windowManager: WindowManager? = null
+    private var floatingButton: Button? = null
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    override fun onStartCommand(
+        intent: Intent?,
+        flags: Int,
+        startId: Int
+    ): Int {
 
         if (intent == null) {
             stopSelf()
@@ -59,13 +68,12 @@ class ScreenCaptureService : Service() {
         val manager = getSystemService(MEDIA_PROJECTION_SERVICE)
                 as MediaProjectionManager
 
-        mediaProjection = manager.getMediaProjection(resultCode, resultData)
+        mediaProjection = manager.getMediaProjection(
+            resultCode,
+            resultData
+        )
 
-        val metrics = DisplayMetrics()
-        @Suppress("DEPRECATION")
-        (getSystemService(WINDOW_SERVICE) as WindowManager)
-            .defaultDisplay.getRealMetrics(metrics)
-
+        val metrics = resources.displayMetrics
         val width = metrics.widthPixels
         val height = metrics.heightPixels
         val density = metrics.densityDpi
@@ -98,7 +106,55 @@ class ScreenCaptureService : Service() {
             null
         )
 
+        showFloatingButton()
+
         return START_NOT_STICKY
+    }
+
+    private fun showFloatingButton() {
+        windowManager = getSystemService(WINDOW_SERVICE)
+                as WindowManager
+
+        val button = Button(this).apply {
+            text = "번역"
+            textSize = 15f
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.rgb(45, 110, 200))
+
+            setOnClickListener {
+                Toast.makeText(
+                    this@ScreenCaptureService,
+                    "번역 기능을 연결하는 중입니다.",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            if (Build.VERSION.SDK_INT >= 26)
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            else
+                WindowManager.LayoutParams.TYPE_PHONE,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.RIGHT or Gravity.CENTER_VERTICAL
+            x = 20
+            y = 0
+        }
+
+        try {
+            windowManager?.addView(button, params)
+            floatingButton = button
+        } catch (e: Exception) {
+            Toast.makeText(
+                this,
+                "번역 버튼 표시 실패: ${e.message}",
+                Toast.LENGTH_LONG
+            ).show()
+        }
     }
 
     private fun createNotification() {
@@ -109,7 +165,9 @@ class ScreenCaptureService : Service() {
                 NotificationManager.IMPORTANCE_LOW
             )
 
-            val manager = getSystemService(NotificationManager::class.java)
+            val manager =
+                getSystemService(NotificationManager::class.java)
+
             manager.createNotificationChannel(channel)
         }
     }
@@ -124,6 +182,16 @@ class ScreenCaptureService : Service() {
     }
 
     private fun releaseCapture() {
+        floatingButton?.let {
+            try {
+                windowManager?.removeView(it)
+            } catch (_: Exception) {
+            }
+        }
+
+        floatingButton = null
+        windowManager = null
+
         virtualDisplay?.release()
         virtualDisplay = null
 
