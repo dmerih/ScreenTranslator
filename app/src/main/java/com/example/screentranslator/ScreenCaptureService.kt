@@ -6,27 +6,45 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.Rect
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
+import android.media.Image
 import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.IBinder
 import android.view.Gravity
+import android.view.View
 import android.view.WindowManager
 import android.widget.Button
+import android.widget.TextView
 import android.widget.Toast
+
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.Text
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.japanese.JapaneseTextRecognizerOptions
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import com.google.mlkit.nl.translate.Translation
+import com.google.mlkit.nl.translate.Translator
+import com.google.mlkit.nl.translate.TranslatorOptions
+import com.google.mlkit.nl.translate.TranslateLanguage
 
 class ScreenCaptureService : Service() {
 
     private var mediaProjection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var imageReader: ImageReader? = null
+
     private var windowManager: WindowManager? = null
     private var floatingButton: Button? = null
+
+    private val translationViews = mutableListOf<View>()
 
     override fun onStartCommand(
         intent: Intent?,
@@ -82,7 +100,7 @@ class ScreenCaptureService : Service() {
             width,
             height,
             PixelFormat.RGBA_8888,
-            2
+            3
         )
 
         mediaProjection?.registerCallback(
@@ -112,6 +130,7 @@ class ScreenCaptureService : Service() {
     }
 
     private fun showFloatingButton() {
+
         windowManager = getSystemService(WINDOW_SERVICE)
                 as WindowManager
 
@@ -122,43 +141,298 @@ class ScreenCaptureService : Service() {
             setBackgroundColor(Color.rgb(45, 110, 200))
 
             setOnClickListener {
-                Toast.makeText(
-                    this@ScreenCaptureService,
-                    "번역 기능을 연결하는 중입니다.",
-                    Toast.LENGTH_SHORT
-                ).show()
+                captureAndTranslate()
             }
         }
 
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
-            if (Build.VERSION.SDK_INT >= 26)
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            else
-                WindowManager.LayoutParams.TYPE_PHONE,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.RIGHT or Gravity.CENTER_VERTICAL
             x = 20
-            y = 0
         }
 
         try {
             windowManager?.addView(button, params)
             floatingButton = button
         } catch (e: Exception) {
-            Toast.makeText(
-                this,
-                "번역 버튼 표시 실패: ${e.message}",
-                Toast.LENGTH_LONG
-            ).show()
+            showMessage("버튼 표시 실패: ${e.message}")
         }
     }
 
+    private fun captureAndTranslate() {
+
+        val image = try {
+            imageReader?.acquireLatestImage()
+        } catch (e: Exception) {
+            null
+        }
+
+        if (image == null) {
+            showMessage("화면을 캡처할 수 없습니다. 잠시 후 다시 눌러주세요.")
+            return
+        }
+
+        val bitmap = try {
+            imageToBitmap(image)
+        } catch (e: Exception) {
+            null
+        } finally {
+            image.close()
+        }
+
+        if (bitmap == null) {
+            showMessage("화면 이미지 변환 실패")
+            return
+        }
+
+        clearTranslationOverlays()
+
+        showMessage("문자를 인식하고 있습니다.")
+
+        recognizeText(bitmap)
+    }
+
+    private fun imageToBitmap(image: Image): Bitmap {
+
+        val plane = image.planes[0]
+        val buffer = plane.buffer
+
+        val pixelStride = plane.pixelStride
+        val rowStride = plane.rowStride
+
+        val rowPadding =
+            rowStride - pixelStride * image.width
+
+        val paddedWidth =
+            image.width + rowPadding / pixelStride
+
+        val paddedBitmap = Bitmap.createBitmap(
+            paddedWidth,
+            image.height,
+            Bitmap.Config.ARGB_8888
+        )
+
+        buffer.rewind()
+        paddedBitmap.copyPixelsFromBuffer(buffer)
+
+        val bitmap = Bitmap.createBitmap(
+            paddedBitmap,
+            0,
+            0,
+            image.width,
+            image.height
+        )
+
+        paddedBitmap.recycle()
+
+        return bitmap
+    }
+
+    private fun recognizeText(bitmap: Bitmap) {
+
+        val inputImage = InputImage.fromBitmap(bitmap, 0)
+
+        val japaneseRecognizer = TextRecognition.getClient(
+            JapaneseTextRecognizerOptions.Builder().build()
+        )
+
+        val englishRecognizer = TextRecognition.getClient(
+            TextRecognizerOptions.DEFAULT_OPTIONS
+        )
+
+        japaneseRecognizer.process(inputImage)
+            .addOnCompleteListener { japaneseTask ->
+
+                englishRecognizer.process(inputImage)
+                    .addOnCompleteListener { englishTask ->
+
+                        val japaneseResult =
+                            if (japaneseTask.isSuccessful)
+                                japaneseTask.result
+                            else null
+
+                        val englishResult =
+                            if (englishTask.isSuccessful)
+                                englishTask.result
+                            else null
+
+                        val isJapanese =
+                            japaneseResult != null &&
+                            containsJapanese(japaneseResult.text)
+
+                        val selectedResult: Text? =
+                            if (isJapanese) japaneseResult
+                            else englishResult
+
+                        val sourceLanguage =
+                            if (isJapanese)
+                                TranslateLanguage.JAPANESE
+                            else
+                                TranslateLanguage.ENGLISH
+
+                        japaneseRecognizer.close()
+                        englishRecognizer.close()
+                        bitmap.recycle()
+
+                        if (selectedResult == null ||
+                            selectedResult.textBlocks.isEmpty()
+                        ) {
+                            showMessage("인식된 문자가 없습니다.")
+                            return@addOnCompleteListener
+                        }
+
+                        translateText(
+                            selectedResult,
+                            sourceLanguage
+                        )
+                    }
+            }
+    }
+
+    private fun containsJapanese(text: String): Boolean {
+        return text.any {
+            it in '\u3040'..'\u30FF' ||
+            it in '\u3400'..'\u9FFF'
+        }
+    }
+
+    private fun translateText(
+        result: Text,
+        sourceLanguage: String
+    ) {
+
+        val targets = result.textBlocks.mapNotNull { block ->
+            block.boundingBox?.let {
+                Pair(it, block.text)
+            }
+        }
+
+        if (targets.isEmpty()) {
+            showMessage("번역할 문자가 없습니다.")
+            return
+        }
+
+        val options = TranslatorOptions.Builder()
+            .setSourceLanguage(sourceLanguage)
+            .setTargetLanguage(TranslateLanguage.KOREAN)
+            .build()
+
+        val translator = Translation.getClient(options)
+
+        showMessage("번역 모델을 준비하고 있습니다.")
+
+        translator.downloadModelIfNeeded()
+            .addOnSuccessListener {
+
+                var remaining = targets.size
+
+                for ((box, originalText) in targets) {
+
+                    translator.translate(originalText)
+                        .addOnSuccessListener { translatedText ->
+
+                            addTranslationOverlay(
+                                box,
+                                translatedText
+                            )
+                        }
+                        .addOnFailureListener {
+                            showMessage("일부 문장 번역에 실패했습니다.")
+                        }
+                        .addOnCompleteListener {
+
+                            remaining--
+
+                            if (remaining == 0) {
+                                translator.close()
+                                showMessage("번역 완료")
+                            }
+                        }
+                }
+            }
+            .addOnFailureListener { error ->
+                translator.close()
+                showMessage(
+                    "번역 모델 다운로드 실패: ${error.message}"
+                )
+            }
+    }
+
+    private fun addTranslationOverlay(
+        box: Rect,
+        translatedText: String
+    ) {
+
+        val textView = TextView(this).apply {
+            text = translatedText
+            textSize = 13f
+            setTextColor(Color.WHITE)
+
+            setPadding(5, 3, 5, 3)
+
+            setBackgroundColor(
+                Color.argb(210, 20, 20, 20)
+            )
+        }
+
+        val screenWidth = resources.displayMetrics.widthPixels
+
+        val maxWidth = (screenWidth - box.left)
+            .coerceAtLeast(120)
+
+        val overlayWidth = maxOf(box.width(), 120)
+            .coerceAtMost(maxWidth)
+
+        val params = WindowManager.LayoutParams(
+            overlayWidth,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.LEFT
+            x = box.left
+            y = box.top
+        }
+
+        try {
+            windowManager?.addView(textView, params)
+            translationViews.add(textView)
+        } catch (e: Exception) {
+            showMessage("번역문 표시 실패")
+        }
+    }
+
+    private fun clearTranslationOverlays() {
+
+        for (view in translationViews) {
+            try {
+                windowManager?.removeView(view)
+            } catch (_: Exception) {
+            }
+        }
+
+        translationViews.clear()
+    }
+
+    private fun showMessage(message: String) {
+        Toast.makeText(
+            this,
+            message,
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+
     private fun createNotification() {
+
         if (Build.VERSION.SDK_INT >= 26) {
+
             val channel = NotificationChannel(
                 "screen_capture",
                 "화면 번역",
@@ -173,6 +447,7 @@ class ScreenCaptureService : Service() {
     }
 
     private fun notification(): Notification {
+
         return Notification.Builder(this, "screen_capture")
             .setContentTitle("Screen Translator")
             .setContentText("화면 캡처가 실행 중입니다.")
@@ -182,6 +457,9 @@ class ScreenCaptureService : Service() {
     }
 
     private fun releaseCapture() {
+
+        clearTranslationOverlays()
+
         floatingButton?.let {
             try {
                 windowManager?.removeView(it)
