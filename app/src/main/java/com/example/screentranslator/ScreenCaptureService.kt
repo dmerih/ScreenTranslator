@@ -468,7 +468,11 @@ class ScreenCaptureService : Service() {
 
         val textView = TextView(this).apply {
             text = translatedText
-            textSize = 13f
+            textSize = 16f
+            typeface = android.graphics.Typeface.create(
+                "sans-serif-medium",
+                android.graphics.Typeface.NORMAL
+            )
             setTextColor(Color.BLACK)
             gravity = Gravity.CENTER
             setPadding(6, 4, 6, 4)
