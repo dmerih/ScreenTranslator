@@ -136,12 +136,25 @@ class ScreenCaptureService : Service() {
 
         val button = Button(this).apply {
             text = "번역"
-            textSize = 15f
+            textSize = 10.5f
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.rgb(45, 110, 200))
 
+            scaleX = 0.7f
+            scaleY = 0.7f
+            alpha = 0.45f
+
             setOnClickListener {
                 captureAndTranslate()
+            }
+
+            setOnTouchListener { _, event ->
+                when (event.action) {
+                    android.view.MotionEvent.ACTION_DOWN -> alpha = 1.0f
+                    android.view.MotionEvent.ACTION_UP,
+                    android.view.MotionEvent.ACTION_CANCEL -> alpha = 0.45f
+                }
+                false
             }
         }
 
