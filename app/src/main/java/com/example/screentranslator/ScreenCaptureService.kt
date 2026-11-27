@@ -134,6 +134,18 @@ class ScreenCaptureService : Service() {
         windowManager = getSystemService(WINDOW_SERVICE)
                 as WindowManager
 
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.RIGHT or Gravity.CENTER_VERTICAL
+            x = 20
+            y = 0
+        }
+
         val button = Button(this).apply {
             text = "번역"
             textSize = 10.5f
@@ -147,26 +159,82 @@ class ScreenCaptureService : Service() {
             setOnClickListener {
                 captureAndTranslate()
             }
-
-            setOnTouchListener { _, event ->
-                when (event.action) {
-                    android.view.MotionEvent.ACTION_DOWN -> alpha = 1.0f
-                    android.view.MotionEvent.ACTION_UP,
-                    android.view.MotionEvent.ACTION_CANCEL -> alpha = 0.45f
-                }
-                false
-            }
         }
 
-        val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-            PixelFormat.OPAQUE
-        ).apply {
-            gravity = Gravity.RIGHT or Gravity.CENTER_VERTICAL
-            x = 20
+        var downRawX = 0f
+        var downRawY = 0f
+        var startX = 0
+        var startY = 0
+        var dragging = false
+
+        val touchSlop =
+            android.view.ViewConfiguration.get(this).scaledTouchSlop
+
+        button.setOnTouchListener { view, event ->
+
+            when (event.action) {
+
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    downRawX = event.rawX
+                    downRawY = event.rawY
+
+                    startX = params.x
+                    startY = params.y
+
+                    dragging = false
+                    view.alpha = 1.0f
+                    true
+                }
+
+                android.view.MotionEvent.ACTION_MOVE -> {
+
+                    val dx = event.rawX - downRawX
+                    val dy = event.rawY - downRawY
+
+                    if (!dragging &&
+                        (kotlin.math.abs(dx) > touchSlop ||
+                         kotlin.math.abs(dy) > touchSlop)
+                    ) {
+                        dragging = true
+                    }
+
+                    if (dragging) {
+                        params.x = (startX - dx.toInt()).coerceIn(
+                            0,
+                            resources.displayMetrics.widthPixels - view.width
+                        )
+
+                        params.y = (startY + dy.toInt()).coerceIn(
+                            -resources.displayMetrics.heightPixels / 2,
+                            resources.displayMetrics.heightPixels / 2
+                        )
+
+                        try {
+                            windowManager?.updateViewLayout(view, params)
+                        } catch (_: Exception) {
+                        }
+                    }
+
+                    true
+                }
+
+                android.view.MotionEvent.ACTION_UP -> {
+                    view.alpha = 0.45f
+
+                    if (!dragging) {
+                        view.performClick()
+                    }
+
+                    true
+                }
+
+                android.view.MotionEvent.ACTION_CANCEL -> {
+                    view.alpha = 0.45f
+                    true
+                }
+
+                else -> true
+            }
         }
 
         try {
