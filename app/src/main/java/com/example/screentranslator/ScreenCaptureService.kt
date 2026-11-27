@@ -367,26 +367,18 @@ class ScreenCaptureService : Service() {
         box: Rect,
         translatedText: String
     ) {
+        val screenWidth = resources.displayMetrics.widthPixels
+        val maxWidth = (screenWidth - box.left).coerceAtLeast(120)
+        val overlayWidth = maxOf(box.width(), 120).coerceAtMost(maxWidth)
 
         val textView = TextView(this).apply {
             text = translatedText
             textSize = 13f
-            setTextColor(Color.WHITE)
-
-            setPadding(5, 3, 5, 3)
-
-            setBackgroundColor(
-                Color.argb(210, 20, 20, 20)
-            )
+            setTextColor(Color.BLACK)
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(6, 4, 6, 4)
+            setBackgroundColor(Color.WHITE)
         }
-
-        val screenWidth = resources.displayMetrics.widthPixels
-
-        val maxWidth = (screenWidth - box.left)
-            .coerceAtLeast(120)
-
-        val overlayWidth = maxOf(box.width(), 120)
-            .coerceAtMost(maxWidth)
 
         val params = WindowManager.LayoutParams(
             overlayWidth,
