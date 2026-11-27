@@ -368,38 +368,44 @@ class ScreenCaptureService : Service() {
         translatedText: String
     ) {
         val screenWidth = resources.displayMetrics.widthPixels
-        val maxWidth = (screenWidth - box.left).coerceAtLeast(120)
-        val overlayWidth = maxOf(box.width(), 120).coerceAtMost(maxWidth)
+        val screenHeight = resources.displayMetrics.heightPixels
+
+        val left = box.left.coerceIn(0, screenWidth - 1)
+        val top = box.top.coerceIn(0, screenHeight - 1)
+        val overlayWidth = box.width().coerceAtLeast(120)
+            .coerceAtMost(screenWidth - left)
+        val overlayHeight = box.height().coerceAtLeast(36)
 
         val textView = TextView(this).apply {
             text = translatedText
             textSize = 13f
             setTextColor(Color.BLACK)
-            gravity = Gravity.CENTER_VERTICAL
+            gravity = Gravity.CENTER
             setPadding(6, 4, 6, 4)
             setBackgroundColor(Color.WHITE)
+            background.alpha = 255
             alpha = 1.0f
         }
 
         val params = WindowManager.LayoutParams(
             overlayWidth,
-            WindowManager.LayoutParams.WRAP_CONTENT,
+            overlayHeight,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
             PixelFormat.OPAQUE
         ).apply {
             gravity = Gravity.TOP or Gravity.LEFT
+            x = left
+            y = top
             alpha = 1.0f
-            x = box.left
-            y = box.top
         }
 
         try {
             windowManager?.addView(textView, params)
             translationViews.add(textView)
         } catch (e: Exception) {
-            showMessage("번역문 표시 실패")
+            showMessage("번역문 표시 실패: ${e.message}")
         }
     }
 
