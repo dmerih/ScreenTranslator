@@ -387,9 +387,59 @@ class ScreenCaptureService : Service() {
         sourceLanguage: String
     ) {
 
-        val targets = result.textBlocks.mapNotNull { block ->
+        val rawTargets = result.textBlocks.mapNotNull { block ->
             block.boundingBox?.let {
-                Pair(it, block.text)
+                Pair(Rect(it), block.text.trim())
+            }
+        }.filter { it.second.isNotEmpty() }
+            .sortedWith(
+                compareBy<Pair<Rect, String>> { it.first.centerY() }
+                    .thenBy { it.first.left }
+            )
+
+        // 같은 줄에 있는 OCR 영역을 하나의 문장으로 결합
+        val targets = mutableListOf<Pair<Rect, String>>()
+        val maxGap = (resources.displayMetrics.widthPixels * 0.06f).toInt()
+
+        for ((box, text) in rawTargets) {
+            val last = targets.lastOrNull()
+
+            if (last != null) {
+                val overlap = (
+                    minOf(last.first.bottom, box.bottom) -
+                    maxOf(last.first.top, box.top)
+                ).coerceAtLeast(0)
+
+                val minHeight = minOf(
+                    last.first.height(),
+                    box.height()
+                ).coerceAtLeast(1)
+
+                val sameLine =
+                    overlap.toFloat() / minHeight >= 0.45f
+
+                val closeEnough =
+                    box.left - last.first.right <= maxGap
+
+                if (sameLine && closeEnough) {
+                    val mergedBox = Rect(last.first)
+                    mergedBox.union(box)
+
+                    val separator =
+                        if (sourceLanguage == TranslateLanguage.JAPANESE)
+                            ""
+                        else
+                            " "
+
+                    targets[targets.lastIndex] = Pair(
+                        mergedBox,
+                        last.second + separator + text
+                    )
+                } else {
+                    targets.add(Pair(box, text))
+                }
+            } else {
+                targets.add(Pair(box, text))
             }
         }
 
