@@ -398,7 +398,7 @@ class ScreenCaptureService : Service() {
         ).apply {
             gravity = Gravity.TOP or Gravity.LEFT
             x = box.left
-            y = box.top
+            y = (box.top - 60).coerceAtLeast(0)
         }
 
         try {
